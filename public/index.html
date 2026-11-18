@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Room — watch together</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --txt:#e8eaf0; --mut:#8b93a5; --acc:#5b8cff; --red:#e5484d; --grn:#30a46c; }
+  * { box-sizing:border-box; margin:0; }
+  html,body { height:100%; background:var(--bg); color:var(--txt); font:15px/1.4 system-ui,Segoe UI,Roboto,sans-serif; }
+  button,select,input { font:inherit; color:inherit; }
+  .center { min-height:100%; display:grid; place-items:center; padding:20px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:28px; width:min(420px,100%); display:grid; gap:14px; }
+  h1 { font-size:22px; }
+  p.mut { color:var(--mut); font-size:14px; }
+  input[type=text] { background:#0f1115; border:1px solid var(--line); border-radius:10px; padding:11px 12px; width:100%; }
+  .btn { background:var(--acc); border:0; border-radius:10px; padding:11px 16px; cursor:pointer; font-weight:600; }
+  .btn:hover { filter:brightness(1.1); }
+  .row { display:flex; gap:16px; align-items:center; color:var(--mut); }
+  .row label { display:flex; gap:6px; align-items:center; cursor:pointer; }
+
+  #app { display:none; position:fixed; inset:0; height:100vh; height:100dvh; flex-direction:column; }
+  #playgate { position:fixed; inset:0; z-index:20; background:rgba(0,0,0,.7); display:none; place-items:center; }
+  #playgate button { font-size:18px; padding:16px 26px; }
+  #top { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line); }
+  #top .sp { flex:1; }
+  #main { flex:1; min-height:0; display:flex; gap:10px; padding:10px; }
+  #stage { flex:1; min-width:0; display:none; flex-direction:column; gap:10px; }
+  .sharing #stage { display:flex; }
+  .screen { position:relative; flex:1; min-height:180px; background:#000; border-radius:12px; overflow:hidden; }
+  .screen video { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; }
+  #stage { min-height:0; }
+  .screen.fsx { position:fixed; inset:0; z-index:10; border-radius:0; min-height:0; }
+  .screen.fsx .bar { opacity:1; padding-top:calc(8px + env(safe-area-inset-top)); top:0; bottom:auto; background:linear-gradient(rgba(0,0,0,.6),transparent); }
+  .screen video { pointer-events:none; }
+  video::-webkit-media-controls { display:none !important; }
+  .screen .bar { position:absolute; left:0; right:0; bottom:0; display:flex; gap:10px; align-items:center; padding:8px 12px; background:linear-gradient(transparent,rgba(0,0,0,.75)); opacity:0; transition:.15s; }
+  .screen:hover .bar { opacity:1; }
+  .screen .bar input { width:110px; }
+  .chip { background:rgba(0,0,0,.6); border-radius:8px; padding:3px 9px; font-size:13px; }
+  .ibtn { background:rgba(255,255,255,.15); border:0; border-radius:8px; padding:5px 10px; cursor:pointer; }
+  #tiles { flex:1; display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); grid-auto-rows:1fr; min-width:0; }
+  .sharing #tiles { flex:none; width:240px; display:flex; flex-direction:column; overflow:auto; }
+  .sharing .tile { flex:none; aspect-ratio:16/9; }
+  .tile { position:relative; background:#1d212b; border-radius:12px; overflow:hidden; min-height:120px; border:2px solid transparent; }
+  .tile.speaking { border-color:var(--grn); }
+  .tile video { width:100%; height:100%; object-fit:cover; display:block; }
+  .tile.nocam video { visibility:hidden; }
+  .tile .av { position:absolute; inset:0; display:none; place-items:center; }
+  .tile.nocam .av { display:grid; }
+  .av span { width:72px; height:72px; border-radius:50%; background:var(--acc); display:grid; place-items:center; font-size:30px; font-weight:700; }
+  .tile .nm { position:absolute; left:8px; bottom:8px; display:flex; gap:6px; }
+  .mutedic { background:var(--red); border-radius:8px; padding:3px 7px; font-size:13px; }
+  #ctl { display:flex; justify-content:center; align-items:center; gap:10px; padding:12px 12px calc(12px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); flex-wrap:wrap; flex:none; }
+  #top { flex:none; }
+  @media (hover:none) { .screen .bar { opacity:1; } }
+  .c { background:#262b36; border:0; border-radius:12px; padding:11px 16px; cursor:pointer; min-width:92px; }
+  .c:hover { background:#303644; }
+  .c.off { background:var(--red); }
+  .c.on { background:var(--grn); }
+  .c.leave { background:var(--red); }
+  select { background:#262b36; border:0; border-radius:12px; padding:11px 10px; }
+  #toast { position:fixed; top:14px; left:50%; transform:translateX(-50%); background:#262b36; padding:10px 16px; border-radius:10px; display:none; z-index:9; }
+  @media (max-width:720px) {
+    #main { flex-direction:column; padding:6px; gap:6px; overflow:auto; }
+    #tiles { grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); grid-auto-rows:minmax(110px,1fr); gap:6px; }
+    .sharing #tiles { width:auto; flex:none; flex-direction:row; height:96px; overflow-x:auto; overflow-y:hidden; }
+    .sharing .tile { width:150px; min-height:0; height:100%; aspect-ratio:auto; }
+    #ctl { gap:6px; padding-left:6px; padding-right:6px; }
+    .c { min-width:0; padding:12px 14px; font-size:14px; }
+    .c .lbl { display:none; }
+    #qual { max-width:120px; font-size:13px; padding:12px 6px; }
+    .screen .bar .vol, .screen .bar .res { display:none; }
+  }
+
+  /* Phones held sideways (short screens): controls become a column on the right, video gets the height */
+  @media (max-height:500px) and (orientation:landscape) {
+    .center { padding:8px; }
+    .card { padding:16px; gap:10px; }
+    h1 { font-size:19px; }
+    #app[style*="flex"] { display:grid !important; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto minmax(0,1fr); grid-template-areas:"top ctl" "src ctl" "main ctl"; padding-left:env(safe-area-inset-left); }
+    #top { grid-area:top; padding:4px 8px; }
+    #src { grid-area:src; padding:4px 8px; }
+    #main { grid-area:main; flex-direction:row; padding:6px; gap:6px; overflow:hidden; }
+    #ctl { grid-area:ctl; flex-direction:column; flex-wrap:nowrap; justify-content:center; gap:6px; border-top:0; border-left:1px solid var(--line); padding:6px calc(6px + env(safe-area-inset-right)) 6px 6px; overflow-y:auto; }
+    .c { min-width:0; padding:10px 12px; }
+    .c .lbl { display:none; }
+    #qual { max-width:96px; }
+    .screen { min-height:0; }
+    #tiles { width:120px; height:auto; flex:none; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
+    .sharing #tiles { width:120px; height:auto; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
+    .tile, .sharing .tile { width:auto; height:auto; min-height:0; aspect-ratio:16/9; flex:none; }
+    .av span { width:30px; height:30px; font-size:14px; margin-bottom:12px; }
+    .tile .nm { left:4px; bottom:4px; }
+    .chip { font-size:11px; padding:2px 6px; }
+    .mutedic { font-size:11px; padding:2px 5px; }
+    #stage { min-height:0; }
+  }
+
+  @media (max-width:720px) {
+    .av span { width:44px; height:44px; font-size:19px; margin-bottom:14px; }
+    .tile .nm { left:5px; bottom:5px; }
+    .chip { font-size:12px; padding:2px 7px; }
+    #src { flex-wrap:wrap; }
+    #src input[type=text] { flex:1 1 100%; font-size:16px; }
+    #src .c { flex:1; }
+  }
+  @media (max-height:500px) and (orientation:landscape) {
+    #src { flex-wrap:nowrap; }
+    #src input[type=text] { flex:1 1 auto; }
+    #src .c { flex:none; }
+    .screen .bar .vol { display:none; }
+    .av span { width:30px; height:30px; font-size:14px; margin-bottom:12px; }
+    .tile .nm { left:4px; bottom:4px; }
+    .chip { font-size:11px; padding:2px 6px; }
+  }
+</style>
+</head>
+<body>
+<div id="toast"></div>
+
+<!-- Home page -->
+<div id="home" class="center" style="display:none">
+  <div class="card">
+    <h1>🎬 Room</h1>
+    <p class="mut"><b>Screen sharing room:</b> share your screen (with sound, up to 4K), talk by voice and video.</p>
+    <button class="btn" id="newRoom">Create screen sharing room</button>
+    <p class="mut"><b>Watch together (like Teleparty):</b> everyone plays the same YouTube link or video file on their own device, kept in sync. No screen sharing.</p>
+    <a class="btn" href="/watch" style="text-align:center;text-decoration:none;color:inherit">Open watch together</a>
+  </div>
+</div>
+
+<!-- Lobby -->
+<div id="lobby" class="center" style="display:none">
+  <div class="card">
+    <h1>Join the room</h1>
+    <input type="text" id="name" placeholder="Your name" maxlength="30">
+    <div class="row">
+      <label><input type="checkbox" id="lMic" checked> Microphone</label>
+      <label><input type="checkbox" id="lCam" checked> Camera</label>
+    </div>
+    <button class="btn" id="join">Join</button>
+    <p class="mut" id="lobbyMsg"></p>
+  </div>
+</div>
+
+<!-- Room -->
+<div id="app">
+  <div id="top">
+    <b>Room</b><span class="mut" id="count"></span><span class="sp"></span>
+    <button class="c" id="copy" style="min-width:0">🔗 <span class="lbl">Copy link</span></button>
+  </div>
+  <div id="main">
+    <div id="stage"></div>
+    <div id="tiles"></div>
+  </div>
+  <div id="ctl">
+    <button class="c" id="bMic">🎤</button>
+    <button class="c" id="bCam">📷</button>
+    <select id="qual" title="Screen quality">
+      <option value="4k30">Screen: 4K · 30fps</option>
+      <option value="1080p60">Screen: 1080p · 60fps</option>
+      <option value="1440p30">Screen: 1440p · 30fps</option>
+    </select>
+    <button class="c" id="bScr">🖥️ <span class="lbl">Share screen</span></button>
+    <button class="c leave" id="bLeave">✖ <span class="lbl">Leave</span></button>
+  </div>
+</div>
+<div id="playgate"><button class="btn" id="playBtn">▶ Tap to start video and sound</button></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const path = location.pathname.split('/').filter(Boolean);
+const roomId = path[0] === 'r' ? path[1] : null;
+
+function toast(t, ms = 3500) { const e = $('#toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', ms); }
+
+// ---- Home page / lobby ----
+if (!roomId) {
+  $('#home').style.display = 'grid';
+  $('#newRoom').onclick = () => { const id = Math.random().toString(36).slice(2, 10); location.href = '/r/' + id; };
+} else {
+  $('#lobby').style.display = 'grid';
+  $('#name').value = localStorage.getItem('name') || '';
+  $('#join').onclick = start;
+  $('#name').onkeydown = (e) => { if (e.key === 'Enter') start(); };
+  if (!navigator.mediaDevices) $('#lobbyMsg').textContent = 'Note: the browser requires HTTPS (localhost is an exception).';
+}
+
+// ---- State ----
+let myId, es, iceServers = [], localStream = null, screenStream = null, screenSenders = new Map();
+const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && !(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia));
+const me = { name: 'Guest', mic: false, cam: false, screenId: null };
+if (IS_MOBILE || !(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia)) { $('#bScr').style.display = 'none'; $('#qual').style.display = 'none'; } // phones cannot share their screen
+const peers = new Map(); // id -> {id,name,state,pc,polite,making,ignore,streams:Map}
+const QUAL = {
+  '4k30':    { w: 3840, h: 2160, fps: 30, br: 30e6 },
+  '1080p60': { w: 1920, h: 1080, fps: 60, br: 14e6 },
+  '1440p30': { w: 2560, h: 1440, fps: 30, br: 16e6 },
+};
+
+async function start() {
+  me.name = ($('#name').value.trim() || 'Guest').slice(0, 30);
+  localStorage.setItem('name', me.name);
+  const wantMic = $('#lMic').checked, wantCam = $('#lCam').checked;
+  $('#join').disabled = true;
+  try { iceServers = (await (await fetch('/config')).json()).iceServers; } catch {}
+
+  localStream = new MediaStream();
+  if (navigator.mediaDevices && (wantMic || wantCam)) {
+    const tryGet = async (c) => { try { return await navigator.mediaDevices.getUserMedia(c); } catch { return null; } };
+    let s = await tryGet({ audio: wantMic && { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: wantCam && { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
+    if (!s && wantMic && wantCam) { s = await tryGet({ audio: true }); if (!s) s = await tryGet({ video: true }); }
+    if (s) s.getTracks().forEach((t) => localStream.addTrack(t));
+  }
+  me.mic = localStream.getAudioTracks().length > 0;
+  me.cam = localStream.getVideoTracks().length > 0;
+
+  $('#lobby').style.display = 'none';
+  $('#app').style.display = 'flex';
+  connect();
+}
+
+// Signaling: long-polling (works through any proxy/tunnel)
+let leaving = false, session = 0;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function handle(ev, d) {
+  if (ev === 'joined') { addPeer(d.id, d.name, d.state || {}); toast(d.name + ' joined'); render(); }
+  else if (ev === 'left') { const p = peers.get(d.id); if (p) { toast(p.name + ' left'); p.pc.close(); peers.delete(d.id); render(); } }
+  else if (ev === 'state') {
+    const p = peers.get(d.from); if (!p) return;
+    p.state = d.data;
+    if (screenStream && !screenSenders.has(p.id)) addScreenTo(p);
+    render();
+  }
+  else if (ev === 'chat') chatIn(d);
+  else if (ev === 'sdp') onSdp(d.from, d.data);
+  else if (ev === 'ice') onIce(d.from, d.data);
+}
+
+let ws = null;
+function connect() {
+  const my = ++session;
+  const sock = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws?room=' + encodeURIComponent(roomId));
+  ws = sock;
+  let ping = 0;
+  sock.onopen = () => {
+    sock.send(JSON.stringify({ t: 'join', name: me.name, state: publicState() }));
+    ping = setInterval(() => { if (sock.readyState === 1) sock.send('ping'); }, 25000);
+  };
+  sock.onmessage = (m) => {
+    if (m.data === 'pong' || session !== my) return;
+    const { e, d } = JSON.parse(m.data);
+    if (e === 'welcome') {
+      myId = d.id; me.color = d.color;
+      for (const p of d.peers) addPeer(p.id, p.name, p.state);
+      render();
+    } else if (e === 'full') { leaving = true; toast('The room is full (maximum 8 people).', 8000); }
+    else handle(e, d);
+  };
+  sock.onclose = () => { clearInterval(ping); if (session === my && !leaving) reconnect(my); };
+}
+
+// When the connection is lost: rejoin from a clean start
+async function reconnect(my) {
+  if (session !== my || leaving) return;
+  session++;
+  toast('Connection lost, reconnecting...', 4000);
+  await sleep(1500);
+  if (leaving) return;
+  peers.forEach((p) => { try { p.pc.close(); } catch {} });
+  peers.clear(); screenSenders.clear(); render();
+  connect();
+}
+
+function publicState() { return { mic: me.mic, cam: me.cam, screenId: me.screenId, mobile: IS_MOBILE }; }
+function send(to, type, data) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'send', to, type, data }));
+  return Promise.resolve();
+}
+const broadcastState = () => send(null, 'state', publicState());
+
+// ---- WebRTC (perfect negotiation) ----
+function addPeer(id, name, state) {
+  if (peers.has(id)) return;
+  const pc = new RTCPeerConnection({ iceServers });
+  const p = { id, name, state: state || {}, pc, polite: myId > id, making: false, ignore: false, streams: new Map() };
+  peers.set(id, p);
+
+  pc.onicecandidate = (e) => e.candidate && send(id, 'ice', e.candidate);
+  pc.onnegotiationneeded = async () => {
+    try { p.making = true; await pc.setLocalDescription(); await send(id, 'sdp', pc.localDescription); }
+    catch (e) { console.warn(e); } finally { p.making = false; }
+  };
+  pc.ontrack = (e) => {
+    const s = e.streams[0]; if (!s) return;
+    p.streams.set(s.id, s);
+    s.onremovetrack = () => { if (!s.getTracks().length) { p.streams.delete(s.id); render(); } };
+    render();
+  };
+  pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') pc.restartIce(); };
+
+  localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
+  if (screenStream && p.state.mobile !== undefined) addScreenTo(p);
+  return p;
+}
+
+async function onSdp(from, desc) {
+  const p = peers.get(from) || addPeer(from, 'Guest', {}); const pc = p.pc;
+  const collision = desc.type === 'offer' && (p.making || pc.signalingState !== 'stable');
+  p.ignore = !p.polite && collision;
+  if (p.ignore) return;
+  try {
+    await pc.setRemoteDescription(desc);
+    if (desc.type === 'offer') { await pc.setLocalDescription(); await send(from, 'sdp', pc.localDescription); }
+  } catch (e) { console.warn(e); }
+}
+async function onIce(from, c) {
+  const p = peers.get(from); if (!p) return;
+  try { await p.pc.addIceCandidate(c); } catch (e) { if (!p.ignore) console.warn(e); }
+}
+
+// ---- Microphone / camera ----
+$('#bMic').onclick = async () => {
+  const t = localStream.getAudioTracks()[0];
+  if (t) { t.enabled = !t.enabled; me.mic = t.enabled; }
+  else {
+    try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); addLocalTrack(s.getAudioTracks()[0]); me.mic = true; }
+    catch { return toast('Microphone permission was denied'); }
+  }
+  broadcastState(); render();
+};
+$('#bCam').onclick = async () => {
+  const t = localStream.getVideoTracks()[0];
+  if (t) { t.enabled = !t.enabled; me.cam = t.enabled; }
+  else {
+    try { const s = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } } }); addLocalTrack(s.getVideoTracks()[0]); me.cam = true; }
+    catch { return toast('Camera permission was denied'); }
+  }
+  broadcastState(); render();
+};
+function addLocalTrack(t) {
+  localStream.addTrack(t);
+  peers.forEach((p) => p.pc.addTrack(t, localStream));
+}
+
+// ---- Screen sharing ----
+$('#bScr').onclick = () => (screenStream ? stopScreen() : startScreen());
+
+async function startScreen() {
+  if (!navigator.mediaDevices.getDisplayMedia) return toast('This browser does not support screen sharing (use Chrome/Edge on a computer).', 6000);
+  const q = QUAL[$('#qual').value];
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { width: { ideal: q.w }, height: { ideal: q.h }, frameRate: { ideal: q.fps } },
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      systemAudio: 'include', selfBrowserSurface: 'exclude',
+    });
+  } catch { screenStream = null; return; }
+  const v = screenStream.getVideoTracks()[0];
+  v.contentHint = q.fps >= 60 ? 'motion' : 'detail';
+  v.onended = stopScreen;
+  screenStream._q = q;
+  if (!screenStream.getAudioTracks().length) toast('Sound was not shared. In the dialog, tick "Share system audio / tab audio".', 7000);
+  me.screenId = screenStream.id;
+  await broadcastState(); // identity first, then the track
+  peers.forEach(addScreenTo);
+  $('#bScr').innerHTML = '⏹ <span class="lbl">Stop sharing</span>'; $('#bScr').classList.add('on');
+  render();
+}
+
+// Each viewer gets a separate stream: full quality (4K) for computers, adapted (max 1080p) for phones
+function addScreenTo(p) {
+  const q = screenStream._q;
+  const mobile = !!p.state.mobile;
+  const list = [];
+  screenStream.getTracks().forEach((t) => {
+    const sender = p.pc.addTrack(t, screenStream);
+    list.push(sender);
+    if (t.kind === 'video') {
+      try {
+        const tr = p.pc.getTransceivers().find((x) => x.sender === sender);
+        const codecs = RTCRtpSender.getCapabilities('video').codecs;
+        // phone: VP8 (plays on every device); computer: VP9 (more efficient at high resolution)
+        const rank = (c) => {
+          const m = c.mimeType.toLowerCase();
+          if (/rtx|red|ulpfec|flexfec/.test(m)) return 9;
+          if (mobile) return /vp8/.test(m) ? 0 : /h264/.test(m) ? 1 : 5;
+          return /vp9/.test(m) ? 0 : /av1/.test(m) ? 1 : /vp8/.test(m) ? 2 : /h264/.test(m) ? 3 : 5;
+        };
+        tr.setCodecPreferences([...codecs].sort((a, b) => rank(a) - rank(b)));
+      } catch {}
+      tune(sender, q, mobile, t);
+    } else tune(sender, { audio: true }, mobile);
+  });
+  screenSenders.set(p.id, list);
+}
+function tune(sender, q, mobile, track, tries = 0) {
+  const prm = sender.getParameters();
+  if (!prm.encodings || !prm.encodings.length) { if (tries < 15) setTimeout(() => tune(sender, q, mobile, track, tries + 1), 400); return; }
+  const e = prm.encodings[0];
+  if (q.audio) e.maxBitrate = 192000;
+  else if (mobile) {
+    const w = (track && track.getSettings().width) || 1920;
+    e.scaleResolutionDownBy = Math.max(1, w / 1920);
+    e.maxBitrate = 6e6; e.maxFramerate = Math.min(q.fps, 30);
+    prm.degradationPreference = 'balanced';
+  } else {
+    e.maxBitrate = q.br; e.maxFramerate = q.fps; e.networkPriority = 'high';
+    prm.degradationPreference = 'maintain-resolution';
+  }
+  sender.setParameters(prm).catch(() => {});
+}
+
+function stopScreen() {
+  if (!screenStream) return;
+  screenStream.getTracks().forEach((t) => { t.onended = null; t.stop(); });
+  peers.forEach((p) => (screenSenders.get(p.id) || []).forEach((s) => { try { p.pc.removeTrack(s); } catch {} }));
+  screenSenders.clear(); screenStream = null; me.screenId = null;
+  $('#bScr').innerHTML = '🖥️ <span class="lbl">Share screen</span>'; $('#bScr').classList.remove('on');
+  broadcastState(); render();
+}
+
+// ---- Leave / link ----
+$('#bLeave').onclick = () => { leaving = true; send(null, 'leave', {}); stopScreen(); localStream.getTracks().forEach((t) => t.stop()); peers.forEach((p) => p.pc.close()); location.href = '/'; };
+$('#copy').onclick = async () => { try { await navigator.clipboard.writeText(location.href); toast('Link copied — send it to your friends!'); } catch { prompt('Copy the link:', location.href); } };
+addEventListener('pagehide', () => { if (myId) send(null, 'leave', {}); });
+
+// ---- View ----
+const tileEls = new Map(), screenEls = new Map();
+function initial(n) { return (n || '?').trim().charAt(0).toUpperCase(); }
+
+function ensureTile(key, name, isMe) {
+  let t = tileEls.get(key);
+  if (!t) {
+    t = document.createElement('div'); t.className = 'tile'; t.dataset.id = key;
+    t.innerHTML = '<video autoplay playsinline></video><div class="av"><span></span></div><div class="nm"><span class="chip n"></span><span class="mutedic" style="display:none">🔇</span></div>';
+    t.querySelector('video').muted = !!isMe;
+    $('#tiles').appendChild(t); tileEls.set(key, t);
+  }
+  t.querySelector('.n').textContent = name + (isMe ? ' (you)' : '');
+  t.querySelector('.av span').textContent = initial(name);
+  return t;
+}
+// Phones do not autoplay video with sound without a tap — in that case a "tap" button is shown
+function tryPlay(v) {
+  const r = v.play();
+  if (r && r.catch) r.catch((e) => { if (e && e.name === 'NotAllowedError') $('#playgate').style.display = 'grid'; });
+}
+function setSrc(v, s) { if (v.srcObject !== s) { v.srcObject = s || null; if (s) tryPlay(v); } }
+$('#playBtn').onclick = () => {
+  document.querySelectorAll('video').forEach((v) => { if (v.srcObject) v.play().catch(() => {}); });
+  $('#playgate').style.display = 'none';
+};
+setInterval(() => { // retry if a video is not playing
+  document.querySelectorAll('video').forEach((v) => { if (v.srcObject && v.paused && v.readyState >= 2 && $('#playgate').style.display !== 'grid') tryPlay(v); });
+}, 2000);
+
+function ensureScreen(key, name, isMe) {
+  let el = screenEls.get(key);
+  if (!el) {
+    el = document.createElement('div'); el.className = 'screen';
+    el.innerHTML = '<video autoplay playsinline></video><div class="bar"><span class="chip n"></span><span class="chip res"></span><span style="flex:1"></span><span class="vol">🔊 <input type="range" min="0" max="1" step="0.05" value="1"></span><button class="ibtn fs">⛶ Full screen</button></div>';
+    const v = el.querySelector('video'); v.muted = !!isMe;
+    el.querySelector('input').oninput = (e) => (v.volume = +e.target.value);
+    if (isMe) el.querySelector('.vol').style.display = 'none';
+    // Full screen: we enlarge the wrapper element, not the video itself, so the phone's own
+    // player (seek slider, pause button) does not appear.
+    const fsBtn = el.querySelector('.fs');
+    const setFs = (on) => {
+      el.classList.toggle('fsx', on);
+      fsBtn.textContent = on ? '✖ Close' : '⛶ Full screen';
+      if (!on) { try { screen.orientation && screen.orientation.unlock && screen.orientation.unlock(); } catch {} }
+    };
+    fsBtn.onclick = async () => {
+      if (el.classList.contains('fsx')) {
+        setFs(false);
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        return;
+      }
+      setFs(true);
+      try { if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: 'hide' }); } catch {}
+      try { if (IS_MOBILE && screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); } catch {}
+    };
+    document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && el.classList.contains('fsx')) setFs(false); });
+    v.controls = false; v.disablePictureInPicture = true; v.setAttribute('controlslist', 'nodownload nofullscreen noremoteplayback');
+    el.ondblclick = () => el.querySelector('.fs').click();
+    v.onresize = () => (el.querySelector('.res').textContent = v.videoWidth + '×' + v.videoHeight);
+    $('#stage').appendChild(el); screenEls.set(key, el);
+  }
+  el.querySelector('.n').textContent = '🖥️ ' + name + (isMe ? ' (you)' : '');
+  return el;
+}
+
+function render() {
+  const seenT = new Set(), seenS = new Set();
+  // ourselves
+  const mt = ensureTile('me', me.name, true); seenT.add('me');
+  setSrc(mt.querySelector('video'), localStream);
+  mt.classList.toggle('nocam', !me.cam); mt.querySelector('.mutedic').style.display = me.mic ? 'none' : '';
+  if (screenStream) { const el = ensureScreen('me', me.name, true); seenS.add('me'); setSrc(el.querySelector('video'), screenStream); }
+
+  peers.forEach((p) => {
+    const t = ensureTile(p.id, p.name, false); seenT.add(p.id);
+    let cam = null, scr = null;
+    p.streams.forEach((s) => { if (s.id === p.state.screenId) scr = s; else if (!cam) cam = s; });
+    setSrc(t.querySelector('video'), cam);
+    t.classList.toggle('nocam', !p.state.cam); t.querySelector('.mutedic').style.display = p.state.mic ? 'none' : '';
+    if (scr && p.state.screenId) { const el = ensureScreen(p.id, p.name, false); seenS.add(p.id); setSrc(el.querySelector('video'), scr); }
+  });
+
+  for (const [k, e] of tileEls) if (!seenT.has(k)) { e.remove(); tileEls.delete(k); }
+  for (const [k, e] of screenEls) if (!seenS.has(k)) { e.remove(); screenEls.delete(k); }
+  document.body.classList.toggle('sharing', seenS.size > 0);
+
+  $('#count').textContent = (peers.size + 1) + (peers.size ? ' people' : ' person');
+  const bm = $('#bMic'), bc = $('#bCam');
+  bm.innerHTML = me.mic ? '🎤 <span class="lbl">Mic on</span>' : '🔇 <span class="lbl">Mic off</span>'; bm.classList.toggle('off', !me.mic);
+  bc.innerHTML = me.cam ? '📷 <span class="lbl">Camera on</span>' : '🚫 <span class="lbl">Camera off</span>'; bc.classList.toggle('off', !me.cam);
+}
+
+// highlight the speaker (simple audio level analysis)
+const AC = window.AudioContext || window.webkitAudioContext;
+setInterval(() => {
+  if (!AC) return;
+  peers.forEach((p) => {
+    const t = tileEls.get(p.id); if (!t) return;
+    let cam = null; p.streams.forEach((s) => { if (s.id !== p.state.screenId && !cam) cam = s; });
+    if (!cam || !cam.getAudioTracks().length) return t.classList.remove('speaking');
+    if (!p._an || p._an.s !== cam) {
+      try { p._ac = p._ac || new AC(); const src = p._ac.createMediaStreamSource(new MediaStream(cam.getAudioTracks())); const an = p._ac.createAnalyser(); an.fftSize = 256; src.connect(an); p._an = { s: cam, an, buf: new Uint8Array(an.frequencyBinCount) }; } catch { return; }
+    }
+    p._an.an.getByteFrequencyData(p._an.buf);
+    const lvl = p._an.buf.reduce((a, b) => a + b, 0) / p._an.buf.length;
+    t.classList.toggle('speaking', lvl > 12 && p.state.mic !== false);
+  });
+}, 300);
+</script>
+<script src="/chat.js"></script>
+</body>
+</html>

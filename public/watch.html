@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Watch together</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --txt:#e8eaf0; --mut:#8b93a5; --acc:#5b8cff; --red:#e5484d; --grn:#30a46c; }
+  * { box-sizing:border-box; margin:0; }
+  html,body { height:100%; background:var(--bg); color:var(--txt); font:15px/1.4 system-ui,Segoe UI,Roboto,sans-serif; }
+  button,select,input { font:inherit; color:inherit; }
+  .center { min-height:100%; display:grid; place-items:center; padding:20px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:28px; width:min(420px,100%); display:grid; gap:14px; }
+  h1 { font-size:22px; }
+  p.mut { color:var(--mut); font-size:14px; }
+  input[type=text] { background:#0f1115; border:1px solid var(--line); border-radius:10px; padding:11px 12px; width:100%; }
+  .btn { background:var(--acc); border:0; border-radius:10px; padding:11px 16px; cursor:pointer; font-weight:600; }
+  .btn:hover { filter:brightness(1.1); }
+  .row { display:flex; gap:16px; align-items:center; color:var(--mut); }
+  .row label { display:flex; gap:6px; align-items:center; cursor:pointer; }
+
+  #app { display:none; position:fixed; inset:0; height:100vh; height:100dvh; flex-direction:column; }
+  #top { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line); flex:none; }
+  #top .sp { flex:1; }
+  #src { display:flex; gap:8px; padding:8px 10px; border-bottom:1px solid var(--line); flex:none; }
+  #src input { flex:1; min-width:0; }
+  #main { flex:1; min-height:0; display:flex; gap:10px; padding:10px; }
+  #stage { flex:1; min-width:0; min-height:0; background:#000; border-radius:12px; overflow:hidden; position:relative; display:grid; place-items:center; }
+  #stage video, #stage iframe, #stage #yt { position:absolute; inset:0; width:100%; height:100%; border:0; background:#000; }
+  #stage .ph { color:var(--mut); text-align:center; padding:20px; display:grid; gap:12px; justify-items:center; }
+  #tiles { width:240px; display:flex; flex-direction:column; gap:10px; overflow:auto; flex:none; }
+  .tile { position:relative; background:#1d212b; border-radius:12px; overflow:hidden; flex:none; aspect-ratio:16/9; border:2px solid transparent; }
+  .tile.speaking { border-color:var(--grn); }
+  .tile video { width:100%; height:100%; object-fit:cover; display:block; }
+  .tile.nocam video { visibility:hidden; }
+  .tile .av { position:absolute; inset:0; display:none; place-items:center; }
+  .tile.nocam .av { display:grid; }
+  .av span { width:56px; height:56px; border-radius:50%; background:var(--acc); display:grid; place-items:center; font-size:24px; font-weight:700; }
+  .tile .nm { position:absolute; left:8px; bottom:8px; display:flex; gap:6px; }
+  .chip { background:rgba(0,0,0,.6); border-radius:8px; padding:3px 9px; font-size:13px; }
+  .mutedic { background:var(--red); border-radius:8px; padding:3px 7px; font-size:13px; }
+  #ctl { display:flex; justify-content:center; align-items:center; gap:10px; padding:12px 12px calc(12px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); flex-wrap:wrap; flex:none; }
+  .c { background:#262b36; border:0; border-radius:12px; padding:11px 16px; cursor:pointer; min-width:92px; }
+  .c:hover { background:#303644; }
+  .c.off { background:var(--red); }
+  .c.leave { background:var(--red); }
+  #toast { position:fixed; top:14px; left:50%; transform:translateX(-50%); background:#262b36; padding:10px 16px; border-radius:10px; display:none; z-index:9; max-width:92vw; }
+  #playgate { position:fixed; inset:0; z-index:20; background:rgba(0,0,0,.7); display:none; place-items:center; }
+  #playgate button { font-size:18px; padding:16px 26px; }
+  @media (max-width:720px) {
+    #main { flex-direction:column; padding:6px; gap:6px; }
+    #tiles { width:auto; flex-direction:row; height:96px; overflow-x:auto; overflow-y:hidden; flex:none; }
+    .tile { width:150px; height:100%; aspect-ratio:auto; }
+    #ctl { gap:6px; padding-left:6px; padding-right:6px; }
+    .c { min-width:0; padding:12px 14px; font-size:14px; }
+    .c .lbl { display:none; }
+  }
+
+  /* Phones held sideways (short screens): controls become a column on the right, video gets the height */
+  @media (max-height:500px) and (orientation:landscape) {
+    .center { padding:8px; }
+    .card { padding:16px; gap:10px; }
+    h1 { font-size:19px; }
+    #app[style*="flex"] { display:grid !important; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto minmax(0,1fr); grid-template-areas:"top ctl" "src ctl" "main ctl"; padding-left:env(safe-area-inset-left); }
+    #top { grid-area:top; padding:4px 8px; }
+    #src { grid-area:src; padding:4px 8px; }
+    #main { grid-area:main; flex-direction:row; padding:6px; gap:6px; overflow:hidden; }
+    #ctl { grid-area:ctl; flex-direction:column; flex-wrap:nowrap; justify-content:center; gap:6px; border-top:0; border-left:1px solid var(--line); padding:6px calc(6px + env(safe-area-inset-right)) 6px 6px; overflow-y:auto; }
+    .c { min-width:0; padding:10px 12px; }
+    .c .lbl { display:none; }
+    #qual { max-width:96px; }
+    .screen { min-height:0; }
+    #tiles { width:120px; height:auto; flex:none; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
+    .sharing #tiles { width:120px; height:auto; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
+    .tile, .sharing .tile { width:auto; height:auto; min-height:0; aspect-ratio:16/9; flex:none; }
+    .av span { width:30px; height:30px; font-size:14px; margin-bottom:12px; }
+    .tile .nm { left:4px; bottom:4px; }
+    .chip { font-size:11px; padding:2px 6px; }
+    .mutedic { font-size:11px; padding:2px 5px; }
+    #stage { min-height:0; }
+  }
+
+  @media (max-width:720px) {
+    .av span { width:44px; height:44px; font-size:19px; margin-bottom:14px; }
+    .tile .nm { left:5px; bottom:5px; }
+    .chip { font-size:12px; padding:2px 7px; }
+    #src { flex-wrap:wrap; }
+    #src input[type=text] { flex:1 1 100%; font-size:16px; }
+    #src .c { flex:1; }
+  }
+  @media (max-height:500px) and (orientation:landscape) {
+    #src { flex-wrap:nowrap; }
+    #src input[type=text] { flex:1 1 auto; }
+    #src .c { flex:none; }
+    .screen .bar .vol { display:none; }
+    .av span { width:30px; height:30px; font-size:14px; margin-bottom:12px; }
+    .tile .nm { left:4px; bottom:4px; }
+    .chip { font-size:11px; padding:2px 6px; }
+  }
+</style>
+</head>
+<body>
+<div id="toast"></div>
+
+<div id="home" class="center" style="display:none">
+  <div class="card">
+    <h1>🍿 Watch together</h1>
+    <p class="mut">Everyone plays the same video on their own device, and play / pause / seeking stays in sync. Talk by voice and video while you watch. Works with YouTube links, direct video links, or a video file that everyone has.</p>
+    <button class="btn" id="newRoom">Create new room</button>
+  </div>
+</div>
+
+<div id="lobby" class="center" style="display:none">
+  <div class="card">
+    <h1>Join the room</h1>
+    <input type="text" id="name" placeholder="Your name" maxlength="30">
+    <div class="row">
+      <label><input type="checkbox" id="lMic" checked> Microphone</label>
+      <label><input type="checkbox" id="lCam" checked> Camera</label>
+    </div>
+    <button class="btn" id="join">Join</button>
+    <p class="mut" id="lobbyMsg"></p>
+  </div>
+</div>
+
+<div id="app">
+  <div id="top">
+    <b>Watch together</b><span class="mut" id="count"></span><span class="sp"></span>
+    <button class="c" id="copy" style="min-width:0">🔗 <span class="lbl">Copy link</span></button>
+  </div>
+  <div id="src">
+    <input type="text" id="url" placeholder="Paste a YouTube or video link, then press Load">
+    <button class="c" id="load" style="min-width:0">▶ Load</button>
+    <button class="c" id="file" style="min-width:0">📁 <span class="lbl">Open file</span></button>
+    <button class="c" id="resync" style="min-width:0" title="Make everyone jump to my position">⟳ <span class="lbl">Sync</span></button>
+    <input type="file" id="fileIn" accept="video/*,audio/*" style="display:none">
+  </div>
+  <div id="main">
+    <div id="stage"><div class="ph">Nothing is playing yet.<br>Paste a link above or open a file.</div></div>
+    <div id="tiles"></div>
+  </div>
+  <div id="ctl">
+    <button class="c" id="bMic">🎤</button>
+    <button class="c" id="bCam">📷</button>
+    <button class="c leave" id="bLeave">✖ <span class="lbl">Leave</span></button>
+  </div>
+</div>
+<div id="playgate"><button class="btn" id="playBtn">▶ Tap to start video and sound</button></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const path = location.pathname.split('/').filter(Boolean);
+const roomId = path[0] === 'w' ? path[1] : null;
+
+function toast(t, ms = 3500) { const e = $('#toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', ms); }
+
+if (!roomId) {
+  $('#home').style.display = 'grid';
+  $('#newRoom').onclick = () => { location.href = '/w/' + Math.random().toString(36).slice(2, 10); };
+} else {
+  $('#lobby').style.display = 'grid';
+  $('#name').value = localStorage.getItem('name') || '';
+  $('#join').onclick = start;
+  $('#name').onkeydown = (e) => { if (e.key === 'Enter') start(); };
+  if (!navigator.mediaDevices) $('#lobbyMsg').textContent = 'Note: the browser requires HTTPS (localhost is an exception).';
+}
+
+let myId, iceServers = [], localStream = null;
+const me = { name: 'Guest', mic: false, cam: false };
+const peers = new Map();
+
+async function start() {
+  me.name = ($('#name').value.trim() || 'Guest').slice(0, 30);
+  localStorage.setItem('name', me.name);
+  const wantMic = $('#lMic').checked, wantCam = $('#lCam').checked;
+  $('#join').disabled = true;
+  try { iceServers = (await (await fetch('/config')).json()).iceServers; } catch {}
+  localStream = new MediaStream();
+  if (navigator.mediaDevices && (wantMic || wantCam)) {
+    const tryGet = async (c) => { try { return await navigator.mediaDevices.getUserMedia(c); } catch { return null; } };
+    let s = await tryGet({ audio: wantMic && { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: wantCam && { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24 } } });
+    if (!s && wantMic && wantCam) { s = await tryGet({ audio: true }); if (!s) s = await tryGet({ video: true }); }
+    if (s) s.getTracks().forEach((t) => localStream.addTrack(t));
+  }
+  me.mic = localStream.getAudioTracks().length > 0;
+  me.cam = localStream.getVideoTracks().length > 0;
+  $('#lobby').style.display = 'none';
+  $('#app').style.display = 'flex';
+  connect();
+}
+
+// ---- Signaling (long-polling) ----
+let leaving = false, session = 0;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function handle(ev, d) {
+  if (ev === 'joined') { addPeer(d.id, d.name, d.state || {}); toast(d.name + ' joined'); render(); }
+  else if (ev === 'left') { const p = peers.get(d.id); if (p) { toast(p.name + ' left'); p.pc.close(); peers.delete(d.id); render(); } }
+  else if (ev === 'state') { const p = peers.get(d.from); if (!p) return; p.state = d.data; render(); }
+  else if (ev === 'sync') { const p = peers.get(d.from); applyRemote(d.data, p ? p.name : 'Someone'); }
+  else if (ev === 'chat') chatIn(d);
+  else if (ev === 'sdp') onSdp(d.from, d.data);
+  else if (ev === 'ice') onIce(d.from, d.data);
+}
+
+let ws = null;
+function connect() {
+  const my = ++session;
+  const sock = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws?room=' + encodeURIComponent(roomId));
+  ws = sock;
+  let ping = 0;
+  sock.onopen = () => {
+    sock.send(JSON.stringify({ t: 'join', name: me.name, state: publicState() }));
+    ping = setInterval(() => { if (sock.readyState === 1) sock.send('ping'); }, 25000);
+  };
+  sock.onmessage = (m) => {
+    if (m.data === 'pong' || session !== my) return;
+    const { e, d } = JSON.parse(m.data);
+    if (e === 'welcome') {
+      myId = d.id; me.color = d.color;
+      for (const p of d.peers) addPeer(p.id, p.name, p.state);
+      render();
+      if (d.sync && d.sync.load) applyRemote(d.sync, null);
+    } else if (e === 'full') { leaving = true; toast('The room is full (maximum 8 people).', 8000); }
+    else handle(e, d);
+  };
+  sock.onclose = () => { clearInterval(ping); if (session === my && !leaving) reconnect(my); };
+}
+
+// When the connection is lost: rejoin from a clean start
+async function reconnect(my) {
+  if (session !== my || leaving) return;
+  session++;
+  toast('Connection lost, reconnecting...', 4000);
+  await sleep(1500);
+  if (leaving) return;
+  peers.forEach((p) => { try { p.pc.close(); } catch {} });
+  peers.clear(); render();
+  connect();
+}
+
+function publicState() { return { mic: me.mic, cam: me.cam }; }
+function send(to, type, data) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'send', to, type, data }));
+  return Promise.resolve();
+}
+const broadcastState = () => send(null, 'state', publicState());
+
+// ---- WebRTC voice/video (perfect negotiation) ----
+function addPeer(id, name, state) {
+  if (peers.has(id)) return;
+  const pc = new RTCPeerConnection({ iceServers });
+  const p = { id, name, state: state || {}, pc, polite: myId > id, making: false, ignore: false, streams: new Map() };
+  peers.set(id, p);
+  pc.onicecandidate = (e) => e.candidate && send(id, 'ice', e.candidate);
+  pc.onnegotiationneeded = async () => {
+    try { p.making = true; await pc.setLocalDescription(); await send(id, 'sdp', pc.localDescription); }
+    catch (e) { console.warn(e); } finally { p.making = false; }
+  };
+  pc.ontrack = (e) => { const s = e.streams[0]; if (!s) return; p.streams.set(s.id, s); render(); };
+  pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') pc.restartIce(); };
+  localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
+  return p;
+}
+async function onSdp(from, desc) {
+  const p = peers.get(from) || addPeer(from, 'Guest', {}); const pc = p.pc;
+  const collision = desc.type === 'offer' && (p.making || pc.signalingState !== 'stable');
+  p.ignore = !p.polite && collision;
+  if (p.ignore) return;
+  try {
+    await pc.setRemoteDescription(desc);
+    if (desc.type === 'offer') { await pc.setLocalDescription(); await send(from, 'sdp', pc.localDescription); }
+  } catch (e) { console.warn(e); }
+}
+async function onIce(from, c) {
+  const p = peers.get(from); if (!p) return;
+  try { await p.pc.addIceCandidate(c); } catch (e) { if (!p.ignore) console.warn(e); }
+}
+
+$('#bMic').onclick = async () => {
+  const t = localStream.getAudioTracks()[0];
+  if (t) { t.enabled = !t.enabled; me.mic = t.enabled; }
+  else {
+    try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); addLocalTrack(s.getAudioTracks()[0]); me.mic = true; }
+    catch { return toast('Microphone permission was denied'); }
+  }
+  broadcastState(); render();
+};
+$('#bCam').onclick = async () => {
+  const t = localStream.getVideoTracks()[0];
+  if (t) { t.enabled = !t.enabled; me.cam = t.enabled; }
+  else {
+    try { const s = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 360 } } }); addLocalTrack(s.getVideoTracks()[0]); me.cam = true; }
+    catch { return toast('Camera permission was denied'); }
+  }
+  broadcastState(); render();
+};
+function addLocalTrack(t) { localStream.addTrack(t); peers.forEach((p) => p.pc.addTrack(t, localStream)); }
+
+$('#bLeave').onclick = () => { leaving = true; send(null, 'leave', {}); localStream.getTracks().forEach((t) => t.stop()); peers.forEach((p) => p.pc.close()); location.href = '/watch'; };
+$('#copy').onclick = async () => { try { await navigator.clipboard.writeText(location.href); toast('Link copied — send it to your friends!'); } catch { prompt('Copy the link:', location.href); } };
+addEventListener('pagehide', () => { if (myId) send(null, 'leave', {}); });
+
+// ================= Synchronized playback =================
+let player = null;          // { kind, getTime, isPlaying, seek, play, pause }
+let current = null;         // the loaded source descriptor
+let pendingSt = null;       // state received before the player was ready
+let quietUntil = 0;         // ignore local events caused by applying remote ones
+const quiet = () => (quietUntil = Date.now() + 1200);
+
+function ytId(u) {
+  try {
+    const x = new URL(u);
+    if (x.hostname === 'youtu.be') return x.pathname.slice(1).split('/')[0];
+    if (/youtube\.com$|youtube-nocookie\.com$/.test(x.hostname)) {
+      if (x.searchParams.get('v')) return x.searchParams.get('v');
+      const m = x.pathname.match(/\/(shorts|embed|live)\/([\w-]{6,})/); if (m) return m[2];
+    }
+  } catch {}
+  return null;
+}
+
+$('#load').onclick = loadFromInput;
+$('#url').onkeydown = (e) => { if (e.key === 'Enter') loadFromInput(); };
+function loadFromInput() {
+  const u = $('#url').value.trim(); if (!u) return;
+  let src;
+  const id = ytId(u);
+  if (id) src = { type: 'yt', id };
+  else if (/^https?:\/\//i.test(u)) src = { type: 'url', url: u };
+  else return toast('Paste a full link starting with http:// or https://');
+  $('#url').value = '';
+  setSource(src);
+  send(null, 'sync', { load: src });
+}
+
+$('#file').onclick = () => $('#fileIn').click();
+$('#fileIn').onchange = (e) => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const src = { type: 'file', name: f.name, size: f.size };
+  setSource(src, URL.createObjectURL(f));
+  send(null, 'sync', { load: src });
+};
+
+$('#resync').onclick = () => { if (player) { send(null, 'sync', { st: { playing: player.isPlaying(), t: player.getTime() } }); toast('Everyone jumped to your position'); } };
+
+function clearStage() {
+  if (player && player.destroy) player.destroy();
+  player = null;
+  $('#stage').innerHTML = '';
+}
+
+function setSource(src, objectUrl) {
+  current = src; pendingSt = null;
+  clearStage();
+  if (src.type === 'file' && !objectUrl) return showFilePrompt(src);
+  if (src.type === 'yt') return mountYT(src.id);
+  mountVideo(objectUrl || src.url);
+}
+
+function showFilePrompt(src) {
+  $('#stage').innerHTML = '<div class="ph"><div>Your friend chose a local file:<br><b></b><br>Pick the same file from your computer.</div><button class="btn">📁 Choose file</button></div>';
+  $('#stage').querySelector('b').textContent = src.name;
+  $('#stage').querySelector('button').onclick = () => {
+    const i = document.createElement('input'); i.type = 'file'; i.accept = 'video/*,audio/*';
+    i.onchange = () => { const f = i.files[0]; if (!f) return; if (f.name !== src.name || f.size !== src.size) toast('This file looks different from the one that was chosen — playback may not match.', 6000); clearStage(); mountVideo(URL.createObjectURL(f)); };
+    i.click();
+  };
+}
+
+function localEvent() {
+  if (!player || Date.now() < quietUntil) return;
+  send(null, 'sync', { st: { playing: player.isPlaying(), t: player.getTime() } });
+}
+
+function mountVideo(src) {
+  const v = document.createElement('video');
+  v.controls = true; v.playsInline = true; v.preload = 'auto'; v.src = src;
+  $('#stage').appendChild(v);
+  player = {
+    kind: 'video',
+    getTime: () => v.currentTime, isPlaying: () => !v.paused && !v.ended,
+    seek: (t) => { v.currentTime = t; }, play: () => v.play().catch(onBlocked), pause: () => v.pause(),
+  };
+  v.onplay = v.onpause = v.onseeked = localEvent;
+  v.onerror = () => toast('This video cannot be played in your browser.', 6000);
+  v.onloadedmetadata = flushPending;
+}
+
+let ytReady = null;
+function loadYTApi() {
+  if (ytReady) return ytReady;
+  ytReady = new Promise((res) => {
+    window.onYouTubeIframeAPIReady = () => res();
+    const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s);
+  });
+  return ytReady;
+}
+async function mountYT(id) {
+  const div = document.createElement('div'); div.id = 'yt'; $('#stage').appendChild(div);
+  await loadYTApi();
+  if (!div.isConnected) return; // source changed meanwhile
+  let lastT = 0, lastPlaying = false, timer = 0, ready = false;
+  const yt = new YT.Player('yt', {
+    videoId: id, width: '100%', height: '100%', playerVars: { playsinline: 1, rel: 0, origin: location.origin },
+    events: {
+      onReady: () => { ready = true; flushPending(); },
+      onStateChange: (e) => { if (e.data === 1 || e.data === 2) localEvent(); },
+      onError: () => toast('This YouTube video cannot be embedded.', 6000),
+    },
+  });
+  player = {
+    kind: 'yt',
+    getTime: () => (ready ? yt.getCurrentTime() : 0), isPlaying: () => ready && yt.getPlayerState() === 1,
+    seek: (t) => yt.seekTo(t, true), play: () => yt.playVideo(), pause: () => yt.pauseVideo(),
+    destroy: () => { clearInterval(timer); try { yt.destroy(); } catch {} },
+  };
+  // YouTube has no "seeked" event: detect jumps in the playback position
+  timer = setInterval(() => {
+    if (!ready) return;
+    const cur = yt.getCurrentTime(), playing = yt.getPlayerState() === 1;
+    if (Date.now() > quietUntil && Math.abs(cur - (lastT + (lastPlaying ? 0.5 : 0))) > 1.5) localEvent();
+    lastT = cur; lastPlaying = playing;
+  }, 500);
+}
+
+function onBlocked() { $('#playgate').style.display = 'grid'; }
+$('#playBtn').onclick = () => { $('#playgate').style.display = 'none'; if (player && lastWanted && lastWanted.playing) player.play(); };
+
+let lastWanted = null;
+function flushPending() { if (pendingSt) { const s = pendingSt; pendingSt = null; applyState(s); } }
+function applyState(st) {
+  lastWanted = st;
+  if (!player) { pendingSt = st; return; }
+  quiet();
+  const diff = Math.abs(player.getTime() - st.t);
+  if (diff > (st.playing ? 1 : 0.3)) player.seek(st.t);
+  if (st.playing && !player.isPlaying()) player.play();
+  else if (!st.playing && player.isPlaying()) player.pause();
+}
+function applyRemote(data, who) {
+  if (data.load) {
+    setSource(data.load);
+    if (who) toast(who + ' loaded ' + (data.load.type === 'file' ? data.load.name : 'a video'));
+  }
+  if (data.st) applyState(data.st);
+}
+
+// ---- Participant tiles ----
+const tileEls = new Map();
+const initial = (n) => (n || '?').trim().charAt(0).toUpperCase();
+function ensureTile(key, name, isMe) {
+  let t = tileEls.get(key);
+  if (!t) {
+    t = document.createElement('div'); t.className = 'tile'; t.dataset.id = key;
+    t.innerHTML = '<video autoplay playsinline></video><div class="av"><span></span></div><div class="nm"><span class="chip n"></span><span class="mutedic" style="display:none">🔇</span></div>';
+    t.querySelector('video').muted = !!isMe;
+    $('#tiles').appendChild(t); tileEls.set(key, t);
+  }
+  t.querySelector('.n').textContent = name + (isMe ? ' (you)' : '');
+  t.querySelector('.av span').textContent = initial(name);
+  return t;
+}
+function setSrc(v, s) { if (v.srcObject !== s) { v.srcObject = s || null; if (s) { const r = v.play(); if (r && r.catch) r.catch(() => {}); } } }
+
+function render() {
+  const seen = new Set();
+  const mt = ensureTile('me', me.name, true); seen.add('me');
+  setSrc(mt.querySelector('video'), localStream);
+  mt.classList.toggle('nocam', !me.cam); mt.querySelector('.mutedic').style.display = me.mic ? 'none' : '';
+  peers.forEach((p) => {
+    const t = ensureTile(p.id, p.name, false); seen.add(p.id);
+    let cam = null; p.streams.forEach((s) => { if (!cam) cam = s; });
+    setSrc(t.querySelector('video'), cam);
+    t.classList.toggle('nocam', !p.state.cam); t.querySelector('.mutedic').style.display = p.state.mic ? 'none' : '';
+  });
+  for (const [k, e] of tileEls) if (!seen.has(k)) { e.remove(); tileEls.delete(k); }
+  $('#count').textContent = (peers.size + 1) + (peers.size ? ' people' : ' person');
+  const bm = $('#bMic'), bc = $('#bCam');
+  bm.innerHTML = me.mic ? '🎤 <span class="lbl">Mic on</span>' : '🔇 <span class="lbl">Mic off</span>'; bm.classList.toggle('off', !me.mic);
+  bc.innerHTML = me.cam ? '📷 <span class="lbl">Camera on</span>' : '🚫 <span class="lbl">Camera off</span>'; bc.classList.toggle('off', !me.cam);
+}
+
+// highlight the speaker
+const AC = window.AudioContext || window.webkitAudioContext;
+setInterval(() => {
+  if (!AC) return;
+  peers.forEach((p) => {
+    const t = tileEls.get(p.id); if (!t) return;
+    let cam = null; p.streams.forEach((s) => { if (!cam) cam = s; });
+    if (!cam || !cam.getAudioTracks().length) return t.classList.remove('speaking');
+    if (!p._an || p._an.s !== cam) {
+      try { p._ac = p._ac || new AC(); const src = p._ac.createMediaStreamSource(new MediaStream(cam.getAudioTracks())); const an = p._ac.createAnalyser(); an.fftSize = 256; src.connect(an); p._an = { s: cam, an, buf: new Uint8Array(an.frequencyBinCount) }; } catch { return; }
+    }
+    p._an.an.getByteFrequencyData(p._an.buf);
+    const lvl = p._an.buf.reduce((a, b) => a + b, 0) / p._an.buf.length;
+    t.classList.toggle('speaking', lvl > 12 && p.state.mic !== false);
+  });
+}, 300);
+</script>
+<script src="/chat.js"></script>
+</body>
+</html>
